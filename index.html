@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#000000">
-  <title>Ticket-Scanner</title>
+  <title>Tickets Mila´s Geburtstag</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
     * { box-sizing: border-box; }
@@ -47,7 +47,6 @@
 
     button:disabled { opacity: .5; }
     .secondary { background: #303030; }
-    .danger { background: #991b1b; }
 
     #menuButton {
       width: 52px;
@@ -89,9 +88,7 @@
       margin-top: 16px;
     }
 
-    #reader video {
-      border-radius: 12px;
-    }
+    #reader video { border-radius: 12px; }
 
     #code {
       overflow-wrap: anywhere;
@@ -134,15 +131,12 @@
 
     #resultFlash.valid { background: #00a83b; }
     #resultFlash.invalid { background: #e00000; }
-
-    #resultFlash span {
-      max-width: 100%;
-    }
+    #resultFlash span { max-width: 100%; }
   </style>
 </head>
 <body>
   <header>
-    <h1>🎟️ Ticket-Scanner</h1>
+    <h1>🎟️ Tickets Mila´s Geburtstag</h1>
     <button id="menuButton" aria-label="Menü öffnen"
       aria-expanded="false">☰</button>
   </header>
@@ -188,7 +182,7 @@
   </div>
 
   <script>
-    // Unverändert: bestehende lokale Daten weiterverwenden.
+    // Bestehende lokale Daten bleiben erhalten.
     const KEY = "ticketScannerDataV1";
 
     let records = load();
@@ -197,6 +191,7 @@
     let busy = false;
     let flashTimer = null;
     let lastScanCode = null;
+    let audioContext = null;
 
     const $ = id => document.getElementById(id);
 
@@ -228,8 +223,73 @@
       $("result").textContent = text;
     }
 
+    // Drei unterschiedliche Töne direkt erzeugen.
+    function playBeep(type) {
+      try {
+        const AudioCtx =
+          window.AudioContext || window.webkitAudioContext;
+
+        if (!AudioCtx) return;
+
+        if (!audioContext) audioContext = new AudioCtx();
+
+        if (audioContext.state === "suspended") {
+          audioContext.resume().catch(() => {});
+        }
+
+        const ctx = audioContext;
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const now = ctx.currentTime;
+
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+
+        if (type === "valid") {
+          // Heller, freundlicher Bestätigungston.
+          oscillator.type = "sine";
+          oscillator.frequency.setValueAtTime(880, now);
+          oscillator.frequency.setValueAtTime(1175, now + 0.12);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.exponentialRampToValueAtTime(0.25, now + 0.02);
+          gain.gain.setValueAtTime(0.2, now + 0.18);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+          oscillator.start(now);
+          oscillator.stop(now + 0.36);
+        } else if (type === "invalid") {
+          // Tieferer Warnton.
+          oscillator.type = "square";
+          oscillator.frequency.setValueAtTime(220, now);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+          gain.gain.setValueAtTime(0.18, now + 0.22);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+          oscillator.start(now);
+          oscillator.stop(now + 0.39);
+        } else {
+          // Kurzer Scanner-Piep.
+          oscillator.type = "sine";
+          oscillator.frequency.setValueAtTime(1450, now);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.exponentialRampToValueAtTime(0.2, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+          oscillator.start(now);
+          oscillator.stop(now + 0.13);
+        }
+      } catch (e) {
+        // Scannen funktioniert auch, wenn kein Ton verfügbar ist.
+      }
+    }
+
     function flash(text, isValid, duration = 1300) {
       clearTimeout(flashTimer);
+
       $("resultFlash").className = isValid ? "valid" : "invalid";
       $("flashText").textContent = text;
       $("resultFlash").hidden = false;
@@ -241,9 +301,13 @@
 
     function scanSuccess(decodedText) {
       if (busy) return;
+
       busy = true;
       lastScanCode = decodedText;
       currentCode = decodedText;
+
+      // Jeder erkannte Code erhält einen kurzen Scan-Piep.
+      playBeep("scan");
 
       const exists = records.some(r => r.code === decodedText);
 
@@ -251,16 +315,20 @@
 
       if (exists) {
         showResult("Code in deiner Liste gefunden");
+        playBeep("valid");
         flash("GÜLTIG", true);
+
         $("save").hidden = !$("multiple").checked;
       } else {
         showResult("Code nicht in deiner Liste");
+        playBeep("invalid");
         flash("UNGÜLTIG", false);
-        // Unbekannte Codes können bewusst hinzugefügt werden.
+
+        // Unbekannte Codes können manuell gespeichert werden.
         $("save").hidden = false;
       }
 
-      // Verhindert unmittelbare Mehrfachreaktionen derselben Kameraaufnahme.
+      // Verhindert schnelle Wiederholungen derselben Aufnahme.
       setTimeout(() => { busy = false; }, 1800);
     }
 
@@ -292,7 +360,22 @@
         $("code").textContent = "";
         currentCode = null;
         $("save").hidden = true;
+
         showResult("Kamera wird gestartet …");
+
+        // Audio-Kontext möglichst durch die Nutzeraktion aktivieren.
+        try {
+          const AudioCtx =
+            window.AudioContext || window.webkitAudioContext;
+
+          if (AudioCtx && !audioContext) {
+            audioContext = new AudioCtx();
+          }
+
+          if (audioContext && audioContext.state === "suspended") {
+            await audioContext.resume();
+          }
+        } catch {}
 
         scanner = new Html5Qrcode("reader");
 
@@ -335,6 +418,7 @@
       if (exists && !$("multiple").checked) {
         showResult("Bereits gespeichert – kein Duplikat angelegt");
         $("save").hidden = true;
+        playBeep("valid");
         flash("GÜLTIG", true);
         return;
       }
@@ -348,6 +432,7 @@
         showResult("Code gespeichert");
         $("save").hidden = true;
         renderList();
+        playBeep("valid");
         flash("GÜLTIG", true);
       } else {
         records.pop();
@@ -360,6 +445,7 @@
 
       records.slice().reverse().forEach(record => {
         const li = document.createElement("li");
+
         const date = record.scannedAt
           ? new Date(record.scannedAt).toLocaleString("de-DE")
           : "Datum unbekannt";
@@ -389,8 +475,9 @@
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
+
       a.href = url;
-      a.download = "ticket-scans.json";
+      a.download = "tickets-milas-geburtstag.json";
       a.click();
 
       setTimeout(() => URL.revokeObjectURL(url), 1500);
