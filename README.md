@@ -1,2 +1,2 @@
-# Ticket-Scanner
+# Mila´s Geburtstagparty
 Mein lokaler Barcode-Prüfer
