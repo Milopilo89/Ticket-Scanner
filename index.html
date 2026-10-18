@@ -3,20 +3,35 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#111827">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
   <title>Ticket-Scanner</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
+    * { box-sizing: border-box; }
+
     body {
       font-family: -apple-system, sans-serif;
       max-width: 480px;
+      min-height: 100vh;
       margin: 0 auto;
-      padding: 24px 18px;
-      background: #f5f6f8;
-      color: #111827;
+      padding: 20px 16px;
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+      background: #000;
+      color: #fff;
     }
-    h1 { text-align: center; }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    h1 { font-size: 24px; margin: 0; }
+    h2, h3 { margin-top: 0; }
+
     button {
       width: 100%;
       padding: 15px;
@@ -26,65 +41,162 @@
       background: #2563eb;
       color: white;
       font-size: 16px;
-      font-weight: 600;
+      font-weight: 700;
+      cursor: pointer;
     }
+
     button:disabled { opacity: .5; }
-    .secondary { background: #374151; }
-    .danger { background: #b91c1c; }
-    .panel {
-      background: white;
-      padding: 16px;
-      border-radius: 16px;
-      margin: 14px 0;
+    .secondary { background: #303030; }
+    .danger { background: #991b1b; }
+
+    #menuButton {
+      width: 52px;
+      min-width: 52px;
+      margin: 0;
+      padding: 12px;
+      font-size: 24px;
+      background: #242424;
     }
+
+    .panel {
+      background: #151515;
+      padding: 16px;
+      border: 1px solid #303030;
+      border-radius: 16px;
+      margin: 16px 0;
+    }
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      line-height: 1.4;
+    }
+
+    label input {
+      width: 22px;
+      height: 22px;
+      accent-color: #2563eb;
+      flex-shrink: 0;
+    }
+
+    small { color: #aaa; }
+
+    #reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 14px;
+      margin-top: 16px;
+    }
+
+    #reader video {
+      border-radius: 12px;
+    }
+
+    #code {
+      overflow-wrap: anywhere;
+      color: #ccc;
+    }
+
     #result {
       text-align: center;
-      font-size: 20px;
-      font-weight: bold;
+      font-size: 18px;
+      font-weight: 700;
       overflow-wrap: anywhere;
     }
-    .ok { color: #15803d; }
-    .bad { color: #b91c1c; }
-    label { display: flex; gap: 10px; align-items: center; }
-    label input { width: 22px; height: 22px; }
-    li { padding: 7px 0; overflow-wrap: anywhere; }
-    small { color: #6b7280; }
+
+    #save[hidden], #stop[hidden], #menu[hidden],
+    #list[hidden], #resultFlash[hidden] {
+      display: none !important;
+    }
+
+    li {
+      padding: 10px 0;
+      border-bottom: 1px solid #333;
+      overflow-wrap: anywhere;
+    }
+
+    #resultFlash {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+      color: white;
+      font-size: clamp(48px, 13vw, 76px);
+      font-weight: 900;
+      letter-spacing: 1px;
+      overflow-wrap: anywhere;
+    }
+
+    #resultFlash.valid { background: #00a83b; }
+    #resultFlash.invalid { background: #e00000; }
+
+    #resultFlash span {
+      max-width: 100%;
+    }
   </style>
 </head>
 <body>
-  <h1>🎟️ Ticket-Scanner</h1>
+  <header>
+    <h1>🎟️ Ticket-Scanner</h1>
+    <button id="menuButton" aria-label="Menü öffnen"
+      aria-expanded="false">☰</button>
+  </header>
 
-  <div class="panel">
+  <div id="menu" class="panel" hidden>
+    <h2>Menü</h2>
+
     <label>
       <input type="checkbox" id="multiple">
       <span><b>Mehrfach scannen erlauben</b></span>
     </label>
-    <small>Erlaubt mehrere gespeicherte Einträge desselben Codes.</small>
+    <small>
+      Aktiviert: Derselbe Barcode darf mehrfach gespeichert werden.
+    </small>
+
+    <hr style="border-color:#333; margin:18px 0">
+
+    <h3>Gespeicherte Scans: <span id="count">0</span></h3>
+    <button id="show" class="secondary">
+      Gespeicherte Codes anzeigen
+    </button>
+    <ul id="list" hidden></ul>
+
+    <button id="export" class="secondary">
+      Daten sichern (JSON)
+    </button>
   </div>
 
-  <button id="start">📷 Kamera starten</button>
+  <button id="start">▦ Scannen</button>
   <div id="reader"></div>
-  <button id="stop" class="secondary" hidden>Kamera stoppen</button>
+  <button id="stop" class="secondary" hidden>
+    Kamera stoppen
+  </button>
 
   <div class="panel">
-    <div id="result">Noch kein Barcode gescannt</div>
+    <div id="result">Bereit zum Scannen</div>
     <p id="code"></p>
     <button id="save" hidden>Barcode speichern</button>
   </div>
 
-  <div class="panel">
-    <h3>Gespeicherte Scans: <span id="count">0</span></h3>
-    <button id="show" class="secondary">Gespeicherte Codes anzeigen</button>
-    <ul id="list" hidden></ul>
-    <button id="export" class="secondary">Daten sichern (JSON)</button>
+  <div id="resultFlash" hidden role="status" aria-live="assertive">
+    <span id="flashText"></span>
   </div>
 
   <script>
+    // Unverändert: bestehende lokale Daten weiterverwenden.
     const KEY = "ticketScannerDataV1";
+
     let records = load();
     let scanner = null;
     let currentCode = null;
     let busy = false;
+    let flashTimer = null;
+    let lastScanCode = null;
 
     const $ = id => document.getElementById(id);
 
@@ -103,7 +215,7 @@
         updateCount();
         return true;
       } catch {
-        alert("Speichern fehlgeschlagen. Der Speicher könnte voll sein.");
+        alert("Speichern fehlgeschlagen. Bitte Daten sichern und Speicher prüfen.");
         return false;
       }
     }
@@ -112,54 +224,91 @@
       $("count").textContent = records.length;
     }
 
-    function showResult(text, good) {
+    function showResult(text) {
       $("result").textContent = text;
-      $("result").className = good ? "ok" : "bad";
+    }
+
+    function flash(text, isValid, duration = 1300) {
+      clearTimeout(flashTimer);
+      $("resultFlash").className = isValid ? "valid" : "invalid";
+      $("flashText").textContent = text;
+      $("resultFlash").hidden = false;
+
+      flashTimer = setTimeout(() => {
+        $("resultFlash").hidden = true;
+      }, duration);
     }
 
     function scanSuccess(decodedText) {
       if (busy) return;
       busy = true;
+      lastScanCode = decodedText;
       currentCode = decodedText;
-      $("code").textContent = "Barcode: " + decodedText;
 
       const exists = records.some(r => r.code === decodedText);
 
-      if (exists && !$("multiple").checked) {
-        showResult("✓ GÜLTIG – bereits gespeichert", true);
-        $("save").hidden = true;
-      } else if (exists) {
-        showResult("✓ BEREITS BEKANNT – erneut speicherbar", true);
-        $("save").hidden = false;
+      $("code").textContent = "Barcode: " + decodedText;
+
+      if (exists) {
+        showResult("Code in deiner Liste gefunden");
+        flash("GÜLTIG", true);
+        $("save").hidden = !$("multiple").checked;
       } else {
-        showResult("NEUER CODE – noch nicht gespeichert", false);
+        showResult("Code nicht in deiner Liste");
+        flash("UNGÜLTIG", false);
+        // Unbekannte Codes können bewusst hinzugefügt werden.
         $("save").hidden = false;
       }
 
-      // Kurze Pause, damit derselbe Barcode nicht
-      // unmittelbar mehrfach von der Kamera erfasst wird.
+      // Verhindert unmittelbare Mehrfachreaktionen derselben Kameraaufnahme.
       setTimeout(() => { busy = false; }, 1800);
     }
 
+    $("menuButton").onclick = () => {
+      const open = $("menu").hidden;
+      $("menu").hidden = !open;
+      $("menuButton").setAttribute("aria-expanded", String(open));
+    };
+
     $("start").onclick = async () => {
       if (!window.isSecureContext || !navigator.mediaDevices) {
-        alert("Bitte die App über eine HTTPS-Adresse in Safari öffnen.");
+        alert("Bitte die App über HTTPS in Safari öffnen.");
         return;
+      }
+
+      if (typeof Html5Qrcode === "undefined") {
+        alert("Der Scanner konnte nicht geladen werden. Bitte Internetverbindung prüfen.");
+        return;
+      }
+
+      if (scanner) {
+        try { await scanner.stop(); } catch {}
+        try { scanner.clear(); } catch {}
+        scanner = null;
       }
 
       try {
         $("start").disabled = true;
+        $("code").textContent = "";
+        currentCode = null;
+        $("save").hidden = true;
+        showResult("Kamera wird gestartet …");
+
         scanner = new Html5Qrcode("reader");
+
         await scanner.start(
           { facingMode: "environment" },
           { fps: 10, qrbox: { width: 260, height: 160 } },
           scanSuccess,
           () => {}
         );
+
         $("stop").hidden = false;
+        showResult("Bitte Barcode vor die Kamera halten");
       } catch (e) {
-        alert("Kamera konnte nicht gestartet werden. Bitte Kamerazugriff erlauben und erneut versuchen.");
         scanner = null;
+        showResult("Kamera konnte nicht gestartet werden");
+        alert("Bitte Kamerazugriff erlauben und erneut versuchen.");
       } finally {
         $("start").disabled = false;
       }
@@ -171,8 +320,11 @@
         try { scanner.clear(); } catch {}
         scanner = null;
       }
+
       $("reader").innerHTML = "";
       $("stop").hidden = true;
+      busy = false;
+      showResult("Kamera gestoppt");
     };
 
     $("save").onclick = () => {
@@ -181,8 +333,9 @@
       const exists = records.some(r => r.code === currentCode);
 
       if (exists && !$("multiple").checked) {
-        showResult("Bereits gespeichert – kein Duplikat angelegt", true);
+        showResult("Bereits gespeichert – kein Duplikat angelegt");
         $("save").hidden = true;
+        flash("GÜLTIG", true);
         return;
       }
 
@@ -192,9 +345,10 @@
       });
 
       if (persist()) {
-        showResult("✓ GESPEICHERT", true);
+        showResult("Code gespeichert");
         $("save").hidden = true;
         renderList();
+        flash("GÜLTIG", true);
       } else {
         records.pop();
       }
@@ -204,10 +358,13 @@
       const list = $("list");
       list.replaceChildren();
 
-      records.slice().reverse().forEach((record, index) => {
+      records.slice().reverse().forEach(record => {
         const li = document.createElement("li");
-        li.textContent = record.code + " — " +
-          new Date(record.scannedAt).toLocaleString("de-DE");
+        const date = record.scannedAt
+          ? new Date(record.scannedAt).toLocaleString("de-DE")
+          : "Datum unbekannt";
+
+        li.textContent = record.code + " — " + date;
         list.appendChild(li);
       });
 
@@ -216,6 +373,11 @@
 
     $("show").onclick = () => {
       $("list").hidden = !$("list").hidden;
+
+      $("show").textContent = $("list").hidden
+        ? "Gespeicherte Codes anzeigen"
+        : "Gespeicherte Codes verbergen";
+
       if (!$("list").hidden) renderList();
     };
 
@@ -224,12 +386,14 @@
         [JSON.stringify(records, null, 2)],
         { type: "application/json" }
       );
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = "ticket-scans.json";
       a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
     };
 
     updateCount();
